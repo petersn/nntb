@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from __future__ import print_function
 import sys
 import numpy as np
 import tensorflow as tf
@@ -103,6 +104,11 @@ class TablebaseNetwork:
 		))
 		self.loss = self.cross_entropy + self.regularization_term
 
+		self.accuracy = tf.reduce_mean(tf.cast(
+			tf.equal(tf.argmax(self.flow, 1), tf.argmax(self.desired_output_ph, 1)),
+			tf.float32,
+		))
+
 		# Associate batch normalization with training.
 		update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=self.scope_name)
 		with tf.control_dependencies(update_ops):
@@ -111,6 +117,7 @@ class TablebaseNetwork:
 
 	def new_weight_variable(self, shape):
 		self.total_parameters += np.product(shape)
+		# Scale down regular Xavier initialization because we're residual.
 		stddev = 0.2 * (2.0 / np.product(shape[:-1]))**0.5
 		var = tf.Variable(tf.truncated_normal(shape, stddev=stddev))
 		self.parameters.append(var)
@@ -157,18 +164,9 @@ class TablebaseNetwork:
 		return self.run_on_samples(self.loss.eval, samples)
 
 	def get_accuracy(self, samples):
-		results = self.run_on_samples(self.final_output.eval, samples).reshape((-1, 64 * 64))
-		#results = results.reshape((-1, 64 * 8 * 8))
-		results = np.argmax(results, axis=-1)
-		assert results.shape == (len(samples["features"]),)
-		correct = 0
-		for move, result in zip(samples["moves"], results):
-			lhs = np.argmax(move.reshape((64 * 64,)))
-			#assert lhs.shape == result.shape == (2,)
-			correct += lhs == result #np.all(lhs == result)
-		return correct / float(len(samples["features"]))
+		return self.run_on_samples(self.accuracy.eval, samples)
 
-	def run_on_samples(self, f, samples, learning_rate=0.01, is_training=False):
+	def run_on_samples(self, f, samples, learning_rate=0.0, is_training=False):
 		return f(feed_dict={
 			self.input_ph:          samples["features"],
 			self.desired_output_ph: samples["outputs"],
@@ -185,10 +183,10 @@ def get_batch_norm_vars(net):
 	]
 
 def save_model(net, path):
-	x_conv_weights = [sess.run(var) for var in net.parameters]
-	x_bn_params = [sess.run(i) for i in get_batch_norm_vars(net)]
+	x_conv_weights = sess.run(net.parameters)
+	x_bn_params = sess.run(get_batch_norm_vars(net))
 	np.save(path, [x_conv_weights, x_bn_params])
-	print "\x1b[35mSaved model to:\x1b[0m", path
+	print("\x1b[35mSaved model to:\x1b[0m", path)
 
 # XXX: Still horrifically fragile wrt batch norm variables due to the above horrible graph scraping stuff.
 def load_model(net, path):
@@ -204,6 +202,7 @@ def load_model(net, path):
 	sess.run(operations)
 
 if __name__ == "__main__":
+	print("Making a network as a test.")
 	nntb = TablebaseNetwork("net/")
-	print get_batch_norm_vars(nntb)
+	print("Total parameters:", nntb.total_parameters)
 
