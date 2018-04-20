@@ -21,7 +21,7 @@ def extract_features(board):
 	for piece_index, name in enumerate(PIECE_NAMES):
 		occupancy = getattr(board, name)
 		# Iterate over possible board locations at which this piece could exist.
-		for square_index in xrange(64):
+		for square_index in range(64):
 			square_mask = 1 << square_index
 			if occupancy & square_mask:
 				# If a piece of kind `piece_index` does indeed exist at `square_index`, figure out it color and insert it.
@@ -50,7 +50,7 @@ class TablebaseNetwork:
 	FILTERS = 128
 	CONV_SIZE = 3
 	BLOCK_COUNT = 12
-	OUTPUT_CONV_FILTERS = 8
+	OUTPUT_CONV_FILTERS = 3
 	FC_SIZES = [OUTPUT_CONV_FILTERS * 64, 128, 3]
 	FINAL_OUTPUT_SHAPE = [None, 3]
 

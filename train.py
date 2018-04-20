@@ -8,7 +8,7 @@ import chess, chess.syzygy
 import model
 
 piece_combinations = []
-for i in xrange(4):
+for i in range(4):
 	piece_combinations.extend(itertools.combinations_with_replacement("pnbrqPNBRQ", i))
 
 RED  = "\x1b[31m"
@@ -34,7 +34,7 @@ def make_training_sample():
 	return features, desired_output
 
 def make_minibatch(size):
-	features, outputs = map(np.array, zip(*[make_training_sample() for _ in xrange(size)]))
+	features, outputs = map(np.array, zip(*[make_training_sample() for _ in range(size)]))
 	return {"features": features.astype(np.float32), "outputs": outputs.astype(np.float32)}
 
 def to_hms(x):
@@ -58,16 +58,16 @@ if __name__ == "__main__":
 	group.add_argument("--blocks", metavar="INT", default=8, type=int, help="Number of residual blocks to stack.")
 	group.add_argument("--filters", metavar="INT", default=64, type=int, help="Number of convolutional filters.")
 	group.add_argument("--conv-size", metavar="INT", default=3, type=int, help="Convolution size. e.g. if set to 3 all convolutions are 3x3.")
-	group.add_argument("--final-conv-filters", metavar="INT", default=8, type=int, help="A complicated option. Right before we switch to fully connected processing we reduce the dimensionality of the data out of the convolutional tower. This is the number of filters we reduce to right before flattening into a single vector for fully-connected processing. In AlphaGo Zero this value was 2 for the policy head and 1 for the value head. Here it should probably be at least three, because we are outputting categorical information over three classes.")
+	group.add_argument("--final-conv-filters", metavar="INT", default=3, type=int, help="A complicated option. Right before we switch to fully connected processing we reduce the dimensionality of the data out of the convolutional tower. This is the number of filters we reduce to right before flattening into a single vector for fully-connected processing. In AlphaGo Zero this value was 2 for the policy head and 1 for the value head. Here it should probably be at least three, because we are outputting categorical information over three classes.")
 	group.add_argument("--fully-connected-layers", metavar="COMMA-SEPARATED-INTS", default="128,3", type=str, help="Sizes of the fully connected layers you'd like stacked at the end. Must be comma separated values, ending in a 3 because the end of the network is a softmax over (win, draw, loss). You may include as many fully connected layers as you want.")
 	group.add_argument("--nonlinearity", metavar="STR", default="relu", choices=("relu", "leaky-relu", "elu", "sigmoid"), help="What non-linearity to use in the network. Options: relu, leaky-relu, elu, sigmoid")
 
 	group = parser.add_argument_group("Training Options", "Options that only affect how training is done.")
 	group.add_argument("--syzygy-path", metavar="PATH", required=True, type=str, help="Path to the directory containing all of the Syzygy tablebase files.")
 	group.add_argument("--test-sample-thousands", metavar="INT", default=10, type=int, help="Number of thousands of samples to include in the test sample that is used for printing loss information. Setting it higher merely slows down operation, but results in more accurate information.")
-	group.add_argument("--learning-rate", metavar="FLOAT", default=0.01, type=float, help="Initial learning rate to use in the learning rate schedule.")
-	group.add_argument("--learning-rate-half-life", metavar="FLOAT", default=100e3, type=float, help="Halve the learning rate after this many minibatches (steps).")
-	group.add_argument("--minibatch-size", metavar="INT", default=256, type=int, help="Number of training samples in a single minibatch.")
+	group.add_argument("--learning-rate", metavar="FLOAT", default=0.005, type=float, help="Initial learning rate to use in the learning rate schedule.")
+	group.add_argument("--learning-rate-half-life", metavar="FLOAT", default=10e3, type=float, help="Halve the learning rate after this many minibatches (steps).")
+	group.add_argument("--minibatch-size", metavar="INT", default=512, type=int, help="Number of training samples in a single minibatch.")
 	group.add_argument("--initial-model", metavar="PATH", default=None, type=str, help="Optional path to a previous .npy model file to resume training from. Must have *exactly* the same architecture! There is no checking of this.")
 	group.add_argument("--model-output-dir", metavar="PATH", default="models/", type=str, help="Directory in which to dump models as they save. Will dump as model-001.npy, model-002.npy, and so on, overwriting anything that was there before.")
 	group.add_argument("--stats-interval", metavar="INT", default=200, type=int, help="Print loss and accuracy every this many minibatches.")
@@ -109,7 +109,7 @@ if __name__ == "__main__":
 	print("Generating test sample.")
 	# Make sure the test set is chosen deterministically so it's more comparable between runs.
 	random.seed(123456789)
-	test_sample = [make_minibatch(1024) for _ in xrange(args.test_sample_thousands)]
+	test_sample = [make_minibatch(1024) for _ in range(args.test_sample_thousands)]
 
 	def get_test_sample_statistics(test_sample):
 		results = {"loss": [], "accuracy": []}
