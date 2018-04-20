@@ -19,7 +19,7 @@ You can download them via [this torrent](http://oics.olympuschess.com/tracker/to
 
 ### Usage
 
-If you just want to try the default network architecture simply run `train.py` and passit the path to the Syzygy tablebases:
+If you just want to try the default network architecture simply run `train.py` and pass it the path to the Syzygy tablebases:
 
 ```
 $ python train.py --syzygy-path ~/Downloads/syzygy/
