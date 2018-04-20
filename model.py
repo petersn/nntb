@@ -31,7 +31,7 @@ def extract_features(board):
 				assert white_to_move in (False, True) and piece_is_white in (False, True)
 				piece_is_friendly = white_to_move == piece_is_white
 				features[
-					square_index / 8,
+					square_index // 8,
 					square_index % 8,
 					piece_index + (1 - piece_is_friendly) * 6,
 				] = 1
