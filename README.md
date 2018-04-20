@@ -58,6 +58,8 @@ Prediction:
   Loss:  11.863%
 ```
 
+Note that you *must* pass *exactly* the same model architecture options into `predict.py` as when you invoked `train.py`, as currently the model files do not store the architecture.
+
 It's valid to feed in positions with more than 5 pieces, even though the network has never seen any such positions in its training.
 
 ### Experiment with the architecture!
