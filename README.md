@@ -42,22 +42,35 @@ Steps:  1200 [time:  0:02:25 - useful time:  0:00:54]  lr=0.000920  Loss: 0.4005
 
 Models will be saved every 10,000 steps into `models/`.
 
-Training time is dominated by generating the training samples (which requires probing the tablebase hundreds of times per minibatch), so GPU speed shouldn't matter that much.
+Once you have trained a model you can test it out on example positions as follows:
+
+```
+$ python predict.py --model-path models/model-002.npy --interactive
+> k7/8/1Q6/1p2K3/8/5n2/1r6/8 w - - 0 1
+Prediction:
+  Win:   87.360%
+  Draw:  11.863%
+  Loss:   0.777%
+> k7/8/1Q6/1p2K3/8/5n2/1q6/8 w - - 0 1
+Prediction:
+  Win:   39.148%
+  Draw:  48.989%
+  Loss:  11.863%
+```
+
+It's valid to feed in positions with more than 5 pieces, even though the network has never seen any such positions in its training.
 
 ### Experiment with the architecture!
 
-The default configuration is extremely similar to [Leela Chess Zero](https://github.com/glinscott/leela-chess):
+You can tune all of the various architecture parameters (number of blocks, number of filters, fully connected layers, type of non-linearity, etc.) by passing various options to `train.py`.
+To see a full list simply run `train.py --help`.
+
+The current default network architecture is extremely similar to [Leela Chess Zero](https://github.com/glinscott/leela-chess):
 
 * 6 input planes for our pieces, 6 for their pieces, 1 of all ones.
-* A batch-normalized convolutional layer to some number of filters.
+* A batch-normalized convolutional layer to some number of filters to begin the "tower".
 * Some number of stacked residual batch-normalized "blocks", identical to those from AlphaZero or Leela Chess Zero.
 * A fully connected "win/draw/loss" head, analogous to the value head from AlphaZero or Leela Chess Zero, except ending in a softmax over (win, draw, loss).
-
-The various parameters (number of blocks, number of filters, fully connected layers, type of non-linearity, etc.) are configurable by options to `train.py`. To see a full list run:
-
-```
-train.py --help
-```
 
 To completely change the model architectures, see `model.py`.
 

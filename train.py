@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 from __future__ import print_function
-import os, sys, time, random, itertools, argparse
+import os, sys, signal, time, random, itertools, argparse
 import numpy as np
 import tensorflow as tf
 import chess, chess.syzygy
@@ -55,12 +55,7 @@ def save_model(args):
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 	group = parser.add_argument_group("Network Options", "Options that affect the network architecture.")
-	group.add_argument("--blocks", metavar="INT", default=8, type=int, help="Number of residual blocks to stack.")
-	group.add_argument("--filters", metavar="INT", default=64, type=int, help="Number of convolutional filters.")
-	group.add_argument("--conv-size", metavar="INT", default=3, type=int, help="Convolution size. e.g. if set to 3 all convolutions are 3x3.")
-	group.add_argument("--final-conv-filters", metavar="INT", default=3, type=int, help="A complicated option. Right before we switch to fully connected processing we reduce the dimensionality of the data out of the convolutional tower. This is the number of filters we reduce to right before flattening into a single vector for fully-connected processing. In AlphaGo Zero this value was 2 for the policy head and 1 for the value head. Here it should probably be at least three, because we are outputting categorical information over three classes.")
-	group.add_argument("--fully-connected-layers", metavar="COMMA-SEPARATED-INTS", default="128,3", type=str, help="Sizes of the fully connected layers you'd like stacked at the end. Must be comma separated values, ending in a 3 because the end of the network is a softmax over (win, draw, loss). You may include as many fully connected layers as you want.")
-	group.add_argument("--nonlinearity", metavar="STR", default="relu", choices=("relu", "leaky-relu", "elu", "sigmoid"), help="What non-linearity to use in the network. Options: relu, leaky-relu, elu, sigmoid")
+	model.add_options_to_argparser(group)
 
 	group = parser.add_argument_group("Training Options", "Options that only affect how training is done.")
 	group.add_argument("--syzygy-path", metavar="PATH", required=True, type=str, help="Path to the directory containing all of the Syzygy tablebase files.")
@@ -76,19 +71,9 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 	print("Got arguments:", args)
-	args.fully_connected_layers = list(map(int, args.fully_connected_layers.split(",")))
 
-	model.TablebaseNetwork.BLOCK_COUNT         = args.blocks
-	model.TablebaseNetwork.FILTERS             = args.filters
-	model.TablebaseNetwork.CONV_SIZE           = args.conv_size
-	model.TablebaseNetwork.OUTPUT_CONV_FILTERS = args.final_conv_filters
-	model.TablebaseNetwork.FC_SIZES            = [args.final_conv_filters * 64] + args.fully_connected_layers
-	model.TablebaseNetwork.NONLINEARITY        = {
-		"relu": [tf.nn.relu],
-		"leaky-relu": [tf.nn.leaky_relu],
-		"elu": [tf.nn.elu],
-		"sigmoid": [tf.nn.sigmoid],
-	}[args.nonlinearity]
+	# Configure all of the model hyperparameters from the options we were passed.
+	model.set_options_from_args(args)
 
 	# Opening tablebase.
 	tablebase = chess.syzygy.open_tablebases(args.syzygy_path)
@@ -123,6 +108,15 @@ if __name__ == "__main__":
 			results["loss"].append(loss)
 			results["accuracy"].append(acc)
 		return {k: np.average(v) for k, v in results.items()}
+
+	def ctrl_c_handler(signal, frame):
+		if args.no_save:
+			print("Ctrl+C detected, but not saving model.")
+			return
+		print("Ctrl+C detected. Saving model.")
+		save_model(args)
+		sys.exit(0)
+	signal.signal(signal.SIGINT, ctrl_c_handler)
 
 	total_steps = 0
 	useful_time = 0.0

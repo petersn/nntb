@@ -81,7 +81,7 @@ class TablebaseNetwork:
 		self.stack_convolution(self.CONV_SIZE, FEATURE_LAYERS, self.FILTERS)
 		self.stack_nonlinearity()
 		# Stack some number of residual blocks.
-		for _ in xrange(self.BLOCK_COUNT):
+		for _ in range(self.BLOCK_COUNT):
 			self.stack_block()
 		# Stack a final 1x1 convolution transitioning to fully-connected features.
 		self.stack_convolution(1, self.FILTERS, self.OUTPUT_CONV_FILTERS, batch_normalization=False)
@@ -200,6 +200,30 @@ def load_model(net, path):
 	for var, value in zip(bn_vars, x_bn_params):
 		operations.append(var.assign(value))
 	sess.run(operations)
+
+def add_options_to_argparser(parser):
+	parser.add_argument("--blocks", metavar="INT", default=8, type=int, help="Number of residual blocks to stack.")
+	parser.add_argument("--filters", metavar="INT", default=64, type=int, help="Number of convolutional filters.")
+	parser.add_argument("--conv-size", metavar="INT", default=3, type=int, help="Convolution size. e.g. if set to 3 all convolutions are 3x3.")
+	parser.add_argument("--final-conv-filters", metavar="INT", default=3, type=int, help="A complicated option. Right before we switch to fully connected processing we reduce the dimensionality of the data out of the convolutional tower. This is the number of filters we reduce to right before flattening into a single vector for fully-connected processing. In AlphaGo Zero this value was 2 for the policy head and 1 for the value head. Here it should probably be at least three, because we are outputting categorical information over three classes.")
+	parser.add_argument("--fully-connected-layers", metavar="COMMA-SEPARATED-INTS", default="128,3", type=str, help="Sizes of the fully connected layers you'd like stacked at the end. Must be comma separated values, ending in a 3 because the end of the network is a softmax over (win, draw, loss). You may include as many fully connected layers as you want.")
+	parser.add_argument("--nonlinearity", metavar="STR", default="relu", choices=("relu", "leaky-relu", "elu", "sigmoid"), help="What non-linearity to use in the network. Options: relu, leaky-relu, elu, sigmoid")
+
+def set_options_from_args(args):
+	# Parse the comma separated fully connected layers string (e.g., "128,64,3") into a list of ints.
+	if isinstance(args.fully_connected_layers, str):
+		args.fully_connected_layers = list(map(int, args.fully_connected_layers.split(",")))
+	TablebaseNetwork.BLOCK_COUNT         = args.blocks
+	TablebaseNetwork.FILTERS             = args.filters
+	TablebaseNetwork.CONV_SIZE           = args.conv_size
+	TablebaseNetwork.OUTPUT_CONV_FILTERS = args.final_conv_filters
+	TablebaseNetwork.FC_SIZES            = [args.final_conv_filters * 64] + args.fully_connected_layers
+	TablebaseNetwork.NONLINEARITY        = {
+		"relu": [tf.nn.relu],
+		"leaky-relu": [tf.nn.leaky_relu],
+		"elu": [tf.nn.elu],
+		"sigmoid": [tf.nn.sigmoid],
+	}[args.nonlinearity]
 
 if __name__ == "__main__":
 	print("Making a network as a test.")
