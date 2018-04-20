@@ -20,7 +20,7 @@ def softmax(logits):
     return e_x / e_x.sum()
 
 def predict(fen):
-	"""predict(fen: str) -> (win prob: float, draw prob: float, loss prob: float)"""
+    """predict(fen: str) -> (win prob: float, draw prob: float, loss prob: float)"""
     board = chess.Board(fen)
     features = model.extract_features(board)
     logits, = sess.run(net.flow, feed_dict={
@@ -52,12 +52,12 @@ if __name__ == "__main__":
     model.sess = sess
     model.load_model(net, args.model_path)
 
-	# If passed --fen predict on just that one input.
+    # If passed --fen predict on just that one input.
     if args.fen != None:
         win, draw, loss = predict(args.fen)
         print_probs(win, draw, loss)
-	else:
-		# Otherwise, default to an interactive prediction prompt.
+    else:
+        # Otherwise, default to an interactive prediction prompt.
         while True:
             fen = input("> ")
             try:
