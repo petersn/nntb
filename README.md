@@ -45,7 +45,7 @@ Models will be saved every 10,000 steps into `models/`.
 Once you have trained a model you can test it out on example positions as follows:
 
 ```
-$ python predict.py --model-path models/model-002.npy --interactive
+$ python predict.py --model-path models/model-002.npy
 > k7/8/1Q6/1p2K3/8/5n2/1r6/8 w - - 0 1
 Prediction:
   Win:   87.360%
