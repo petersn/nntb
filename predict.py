@@ -20,6 +20,7 @@ def softmax(logits):
     return e_x / e_x.sum()
 
 def predict(fen):
+	"""predict(fen: str) -> (win prob: float, draw prob: float, loss prob: float)"""
     board = chess.Board(fen)
     features = model.extract_features(board)
     logits, = sess.run(net.flow, feed_dict={
@@ -39,24 +40,24 @@ if __name__ == "__main__":
     model.add_options_to_argparser(group)
 
     parser.add_argument("--model-path", metavar="PATH", required=True, type=str, help="Path to the .npy file with the current model.")
-    parser.add_argument("--fen", metavar="FEN", default=None, type=str, help="FEN string of input position to predict.")
-    parser.add_argument("--interactive", action="store_true", help="If passed then enter an interactive prediction session.")
+    parser.add_argument("--fen", metavar="FEN", default=None, type=str, help="FEN string of input position to predict. Otherwise, default to interactive behavior.")
     args = parser.parse_args()
 
     # Configure all of the model hyperparameters from the options we were passed.
     model.set_options_from_args(args)
 
-    net = model.TablebaseNetwork("net/", build_training=True)
+    net = model.TablebaseNetwork("net/")
     sess = tf.InteractiveSession()
     sess.run(tf.initialize_all_variables())
     model.sess = sess
     model.load_model(net, args.model_path)
 
+	# If passed --fen predict on just that one input.
     if args.fen != None:
         win, draw, loss = predict(args.fen)
         print_probs(win, draw, loss)
-
-    if args.interactive:
+	else:
+		# Otherwise, default to an interactive prediction prompt.
         while True:
             fen = input("> ")
             try:
