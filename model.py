@@ -14,6 +14,7 @@ FEATURE_LAYERS = (
 PIECE_NAMES = ["pawns", "knights", "bishops", "rooks", "queens", "kings"]
 
 def extract_features(board):
+	"""extract_features(board: chess.Board) -> np.array of shape (8, 8, 13)"""
 	features = np.zeros((8, 8, FEATURE_LAYERS), dtype=np.int8)
 	white_to_move = board.turn
 
@@ -46,10 +47,32 @@ def extract_features(board):
 	return features
 
 class TablebaseNetwork:
+	"""TablebaseNetwork
+	Simple implementation of a batch-normalized residual CNN very similar to that of AlphaZero
+	or Leela Chess Zero. Current network architecture:
+
+		* Takes as input a stack of boards of shape [?, 8, 8, 13].
+		  The inputs are expected to be made by `model.extract_features`.
+		* Applies a batch-normalized convolution with some number of filters.
+		* Stacks some number of residual blocks, each block consisting of:
+		  * Batch-normed convolution
+		  * Non-linearity
+		  * Batch-normed convolution
+		  * Skip connection
+		  * Non-linearity
+		* One last unnormalized 1x1 convolution to reduce to some smaller number of filters.
+		* The state is flattened, and some number of fully connected layers are applied.
+		* The final output is of shape [?, 3], and consists of logits over (win, draw, loss).
+
+	To load and save networks see `load_model` and `save_model`. See `add_options_to_argparser`
+	and `set_options_from_args` for info on an easy way of exposing the various architecture
+	hyperparameters to users.
+	"""
+
 	NONLINEARITY = [tf.nn.relu]
-	FILTERS = 128
+	FILTERS = 64
 	CONV_SIZE = 3
-	BLOCK_COUNT = 12
+	BLOCK_COUNT = 8
 	OUTPUT_CONV_FILTERS = 3
 	FC_SIZES = [OUTPUT_CONV_FILTERS * 64, 128, 3]
 	FINAL_OUTPUT_SHAPE = [None, 3]
@@ -116,6 +139,10 @@ class TablebaseNetwork:
 				learning_rate=self.learning_rate_ph, momentum=0.9).minimize(self.loss)
 
 	def new_weight_variable(self, shape):
+		"""new_weight_variable(shape) -> Tensorflow variable of the given shape
+		Call this function instead of making the variable yourself so it gets tracked for model saving/loading.
+		Uses Xavier initialization times 0.2, to make near-identity transforms in residual blocks.
+		"""
 		self.total_parameters += np.product(shape)
 		# Scale down regular Xavier initialization because we're residual.
 		stddev = 0.2 * (2.0 / np.product(shape[:-1]))**0.5
@@ -124,12 +151,19 @@ class TablebaseNetwork:
 		return var
 
 	def new_bias_variable(self, shape):
+		"""new_bias_variable(shape) -> Tensorflow variable of the given shape
+		See new_weight_variable's doc string.
+		"""
 		self.total_parameters += np.product(shape)
 		var = tf.Variable(tf.constant(0.1, shape=shape))
 		self.parameters.append(var)
 		return var
 
 	def stack_convolution(self, kernel_size, old_size, new_size, batch_normalization=True):
+		"""stack_convolution(kernel_size, old_size, new_size, batch_normalization=True)
+		Updates self.flow with a single convolution.
+		If batch_normalization is False then a bias is also added into self.flow after the convolution.
+		"""
 		weights = self.new_weight_variable([kernel_size, kernel_size, old_size, new_size])
 		self.flow = tf.nn.conv2d(self.flow, weights, strides=[1, 1, 1, 1], padding="SAME")
 		if batch_normalization:
@@ -143,9 +177,15 @@ class TablebaseNetwork:
 			self.flow = self.flow + bias # TODO: Is += equivalent?
 
 	def stack_nonlinearity(self):
+		"""stack_nonlinearity()
+		Update self.flow with the currently configured non-linearity.
+		"""
 		self.flow = self.NONLINEARITY[0](self.flow)
 
 	def stack_block(self):
+		"""stack_block()
+		Updates self.flow with: conv, non-linearity, conv, skip connection, non-linearity
+		"""
 		initial_value = self.flow
 		# Stack the first convolution.
 		self.stack_convolution(self.CONV_SIZE, self.FILTERS, self.FILTERS)
@@ -158,15 +198,31 @@ class TablebaseNetwork:
 		self.stack_nonlinearity()
 
 	def train(self, samples, learning_rate):
+		"""train(samples, learning_rate)
+		Samples must be a dict of the form:
+			{"features": np.array of shape [x, 8, 8, 13], "outputs": np.array of shape [x, 3]}
+		"""
 		self.run_on_samples(self.train_step.run, samples, learning_rate=learning_rate, is_training=True)
 
 	def get_loss(self, samples):
+		"""get_loss(samples) -> average loss value over samples
+		See `train` for an explanation of the type of `samples`.
+		"""
 		return self.run_on_samples(self.loss.eval, samples)
 
 	def get_accuracy(self, samples):
+		"""get_loss(samples) -> average prediction accuracy out of the softmax over samples
+		See `train` for an explanation of the type of `samples`.
+		"""
 		return self.run_on_samples(self.accuracy.eval, samples)
 
 	def run_on_samples(self, f, samples, learning_rate=0.0, is_training=False):
+		"""run_on_samples(f, samples, learning_rate=0.0, is_training=False) -> result
+		Intended to be used on a .eval function of a tensor in the network.
+		For example, to get the regularization loss one could run:
+			net.run_on_samples(net.regularization_term.eval, samples)
+		See `train` for an explanation of the type of `samples`.
+		"""
 		return f(feed_dict={
 			self.input_ph:          samples["features"],
 			self.desired_output_ph: samples["outputs"],
@@ -174,15 +230,22 @@ class TablebaseNetwork:
 			self.is_training_ph:    is_training,
 		})
 
-# XXX: This is horrifically ugly.
-# TODO: Once I have a second change it to not do this horrible graph scraping that breaks if you have other things going on.
 def get_batch_norm_vars(net):
+	"""get_batch_norm_vars(net: TablebaseNetwork) -> list of Tensorflow variables
+	Extracts all of the batch normalization moving mean and variance variable from a network.
+	Currently uses the ugly technique of looking for variables by name. :(
+	"""
 	return [
 		i for i in tf.global_variables(scope=net.scope_name)
 		if "batch_normalization" in i.name and ("moving_mean:0" in i.name or "moving_variance:0" in i.name)
 	]
 
 def save_model(net, path):
+	"""save_model(net, path)
+	Saves all the parameters in the network to a given path.
+	You must first set the global variable `sess` to contain your Tensorflow session!
+	For example, if you imported this as model.py, you must first set model.sess = your_session.
+	"""
 	x_conv_weights = sess.run(net.parameters)
 	x_bn_params = sess.run(get_batch_norm_vars(net))
 	np.save(path, [x_conv_weights, x_bn_params])
@@ -190,6 +253,10 @@ def save_model(net, path):
 
 # XXX: Still horrifically fragile wrt batch norm variables due to the above horrible graph scraping stuff.
 def load_model(net, path):
+	"""load_model(net, path)
+	Loads all the model parameters into a network from a given path.
+	See `save_model` for more info: you MUST first set a global variable to use this!
+	"""
 	x_conv_weights, x_bn_params = np.load(path)
 	assert len(net.parameters) == len(x_conv_weights), "Parameter count mismatch!"
 	operations = []
@@ -202,6 +269,10 @@ def load_model(net, path):
 	sess.run(operations)
 
 def add_options_to_argparser(parser):
+	"""add_options_to_argparser(parser: argparse.ArgumentParser)
+	Adds options to an argparse.ArgumentParser for the various architecture hyperparameters.
+	See `set_options_from_args` for more info.
+	"""
 	parser.add_argument("--blocks", metavar="INT", default=8, type=int, help="Number of residual blocks to stack.")
 	parser.add_argument("--filters", metavar="INT", default=64, type=int, help="Number of convolutional filters.")
 	parser.add_argument("--conv-size", metavar="INT", default=3, type=int, help="Convolution size. e.g. if set to 3 all convolutions are 3x3.")
@@ -210,6 +281,16 @@ def add_options_to_argparser(parser):
 	parser.add_argument("--nonlinearity", metavar="STR", default="relu", choices=("relu", "leaky-relu", "elu", "sigmoid"), help="What non-linearity to use in the network. Options: relu, leaky-relu, elu, sigmoid")
 
 def set_options_from_args(args):
+	"""set_options_from_args(args: argparse.Namespace)
+	Configures the network architecture hyperparameters based on the given argparse.Namespace.
+	You MUST call this before constructing a TablebaseNetwork, otherwise you'll use the defaults!
+	The expected usage is approximately as follows:
+
+		parser = argparse.ArgumentParser()
+		model.add_options_to_argparser(parser)
+		args = parser.parse_args()
+		model.set_options_from_args(args)
+	"""
 	# Parse the comma separated fully connected layers string (e.g., "128,64,3") into a list of ints.
 	if isinstance(args.fully_connected_layers, str):
 		args.fully_connected_layers = list(map(int, args.fully_connected_layers.split(",")))
@@ -226,7 +307,13 @@ def set_options_from_args(args):
 	}[args.nonlinearity]
 
 if __name__ == "__main__":
-	print("Making a network as a test.")
+	import argparse
+	parser = argparse.ArgumentParser()
+	add_options_to_argparser(parser)
+	args = parser.parse_args()
+	set_options_from_args(args)
+	print("Making a network as a test to count parameters.")
+	print("Pass --help to see all the various architecture hyperparameters you may configure.")
 	nntb = TablebaseNetwork("net/")
 	print("Total parameters:", nntb.total_parameters)
 
