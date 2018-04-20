@@ -1,4 +1,4 @@
-## Network Tablebases
+## CNN Tablebases
 
 The goal of this project is to experiment with how well CNNs can learn Chess endgame tablebases.
 Some questions of interest:
