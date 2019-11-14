@@ -39,7 +39,7 @@ def extract_features(board):
 
     # If we're encoding a move for black then we flip the board vertically.
     if not white_to_move:
-        features = features[::-1,:,:]
+        features = features[::-1, ::-1, :]
 
     # Set the last feature map to be all ones.
     features[:,:,12] = 1
@@ -70,11 +70,11 @@ class TablebaseNetwork:
     """
 
     NONLINEARITY = [tf.nn.relu]
-    FILTERS = 64
+    FILTERS = 128
     CONV_SIZE = 3
-    BLOCK_COUNT = 8
-    OUTPUT_CONV_FILTERS = 3
-    FC_SIZES = [OUTPUT_CONV_FILTERS * 64, 128, 3]
+    BLOCK_COUNT = 10
+    OUTPUT_CONV_FILTERS = 4
+    FC_SIZES = [OUTPUT_CONV_FILTERS * 64, 256, 3]
     FINAL_OUTPUT_SHAPE = [None, 3]
 
     def __init__(self, scope_name, build_training=False):
@@ -118,7 +118,7 @@ class TablebaseNetwork:
         # The final result of self.flow is now of shape [-1, 3] with logits over (win, draw, loss)
 
     def build_training(self):
-        regularizer = tf.contrib.layers.l2_regularizer(scale=0.0001)
+        regularizer = tf.contrib.layers.l2_regularizer(scale=1e-5)
         reg_variables = tf.trainable_variables(scope=self.scope_name)
         self.regularization_term = tf.contrib.layers.apply_regularization(regularizer, reg_variables)
         self.cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
@@ -135,8 +135,8 @@ class TablebaseNetwork:
         # Associate batch normalization with training.
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=self.scope_name)
         with tf.control_dependencies(update_ops):
-            self.train_step = tf.train.MomentumOptimizer(
-                learning_rate=self.learning_rate_ph, momentum=0.9).minimize(self.loss)
+            self.train_step = tf.train.AdamOptimizer(
+                learning_rate=self.learning_rate_ph).minimize(self.loss)
 
     def new_weight_variable(self, shape):
         """new_weight_variable(shape) -> Tensorflow variable of the given shape
@@ -155,7 +155,7 @@ class TablebaseNetwork:
         See new_weight_variable's doc string.
         """
         self.total_parameters += np.product(shape)
-        var = tf.Variable(tf.constant(0.1, shape=shape))
+        var = tf.Variable(tf.constant(0.0, shape=shape))
         self.parameters.append(var)
         return var
 
@@ -273,12 +273,16 @@ def add_options_to_argparser(parser):
     Adds options to an argparse.ArgumentParser for the various architecture hyperparameters.
     See `set_options_from_args` for more info.
     """
-    parser.add_argument("--blocks", metavar="INT", default=8, type=int, help="Number of residual blocks to stack.")
-    parser.add_argument("--filters", metavar="INT", default=64, type=int, help="Number of convolutional filters.")
+    parser.add_argument("--blocks", metavar="INT", default=10, type=int, help="Number of residual blocks to stack.")
+    parser.add_argument("--filters", metavar="INT", default=128, type=int, help="Number of convolutional filters.")
     parser.add_argument("--conv-size", metavar="INT", default=3, type=int, help="Convolution size. e.g. if set to 3 all convolutions are 3x3.")
-    parser.add_argument("--final-conv-filters", metavar="INT", default=3, type=int, help="A complicated option. Right before we switch to fully connected processing we reduce the dimensionality of the data out of the convolutional tower. This is the number of filters we reduce to right before flattening into a single vector for fully-connected processing. In AlphaGo Zero this value was 2 for the policy head and 1 for the value head. Here it should probably be at least three, because we are outputting categorical information over three classes.")
-    parser.add_argument("--fully-connected-layers", metavar="COMMA-SEPARATED-INTS", default="128,3", type=str, help="Sizes of the fully connected layers you'd like stacked at the end. Must be comma separated values, ending in a 3 because the end of the network is a softmax over (win, draw, loss). You may include as many fully connected layers as you want.")
-    parser.add_argument("--nonlinearity", metavar="STR", default="relu", choices=("relu", "leaky-relu", "elu", "sigmoid"), help="What non-linearity to use in the network. Options: relu, leaky-relu, elu, sigmoid")
+    parser.add_argument("--final-conv-filters", metavar="INT", default=4, type=int, help="A complicated option. Right before we switch to fully connected processing we reduce the dimensionality of the data out of the convolutional tower. This is the number of filters we reduce to right before flattening into a single vector for fully-connected processing. In AlphaGo Zero this value was 2 for the policy head and 1 for the value head. Here it should probably be at least three, because we are outputting categorical information over three classes.")
+    parser.add_argument("--fully-connected-layers", metavar="COMMA-SEPARATED-INTS", default="256,3", type=str, help="Sizes of the fully connected layers you'd like stacked at the end. Must be comma separated values, ending in a 3 because the end of the network is a softmax over (win, draw, loss). You may include as many fully connected layers as you want.")
+    parser.add_argument("--nonlinearity", metavar="STR", default="relu", choices=("relu", "leaky-relu", "elu", "sigmoid", "gelu"), help="What non-linearity to use in the network. Options: relu, leaky-relu, elu, sigmoid, gelu")
+
+# Taken from OpenAI GPT-2 implementation.
+def gelu(x):
+	return 0.5*x*(1+tf.tanh(np.sqrt(2/np.pi)*(x+0.044715*tf.pow(x, 3))))
 
 def set_options_from_args(args):
     """set_options_from_args(args: argparse.Namespace)
@@ -304,6 +308,7 @@ def set_options_from_args(args):
         "leaky-relu": [tf.nn.leaky_relu],
         "elu": [tf.nn.elu],
         "sigmoid": [tf.nn.sigmoid],
+        "gelu": [gelu],
     }[args.nonlinearity]
 
 if __name__ == "__main__":
